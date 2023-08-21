@@ -192,6 +192,7 @@ export default function Chat({ chatbot, close }) {
                     <div>
                       <span
                         style={{
+                          whiteSpace:'pre-line',
                           backgroundColor:
                             message.role === "user"
                               ? chatbot.userMessageColor

@@ -16,7 +16,15 @@ const CHAT_MUTATION = gql`
       file: $file
       conversationId: $conversationId
       chatbotId: $chatbotId
-    )
+    ) {
+      answer
+      contact_info
+      sources {
+        url
+        title
+        page
+      }
+    }
   }
 `;
 
@@ -42,54 +50,51 @@ export default function Chat({ chatbot, close }) {
   };
 
   const handleStartChat = async () => {
-    if (chatbot !== null) {
-      const { data: conversation } = await startChatMutation({
-        variables: { chatbotId: parseInt(chatbot.id, 10) },
-      });
+    const { data: conversation } = await startChatMutation({
+      variables: { chatbotId: parseInt(chatbot.id, 10) },
+    });
 
-      setConversationId(conversation.startChat);
+    setConversationId(conversation.startChat);
 
-      return conversation.startChat;
-    }
-    return null;
+    return conversation.startChat;
   };
 
   const sendMessage = async (message) => {
     let currentConversationId = conversationId;
-
     // If it's the first message and there's no conversation id, start a new chat
-    if (messages.length === 0 && !conversationId) {
+    if (messages && messages.length === 0) {
       currentConversationId = await handleStartChat();
     }
 
     // Add the user's message
     setMessages((prevMessages) => [
       ...prevMessages,
-      { role: "user", message: message },
+      {
+        role: "user",
+        message: { answer: message, contact_info: false, sources: null },
+      },
     ]);
     setInput("");
     try {
-      if (chatbot !== null) {
-        setIsCreating(true);
-        const result = await chatMutation({
-          variables: {
-            input: message,
-            file: chatbot.file,
-            conversationId: parseInt(currentConversationId, 10),
-            chatbotId: parseInt(chatbot.id, 10),
-          },
-        });
+      setIsCreating(true);
+      const result = await chatMutation({
+        variables: {
+          input: message,
+          file: chatbot.file,
+          conversationId: parseInt(currentConversationId, 10),
+          chatbotId: parseInt(chatbot.id, 10),
+        },
+      });
 
-        // Add the bot's message
-        setMessages((prevMessages) => [
-          ...prevMessages,
-          { role: "bot", message: result.data.chat, fresh: true },
-        ]);
-        setIsCreating(false);
-      }
+      // Add the bot's message
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        { role: "bot", message: result.data.chat, fresh: true },
+      ]);
+
+      setIsCreating(false);
     } catch (err) {
       setInput("");
-      console.error(err);
       setIsCreating(false);
     }
   };
@@ -97,39 +102,55 @@ export default function Chat({ chatbot, close }) {
   const handleChat = async () => {
     let currentConversationId = conversationId;
 
+    if (input.trim() === "") return;
+
     // If it's the first message and there's no conversation id, start a new chat
-    if (messages.length === 0 && !conversationId) {
+    if (
+      (messages && messages.length === 0) ||
+      (storedMessages && storedMessages.length === 1 && !conversationId)
+    ) {
       currentConversationId = await handleStartChat();
     }
 
     // Add the user's message
     setMessages((prevMessages) => [
       ...prevMessages,
-      { role: "user", message: input },
+      {
+        role: "user",
+        message: { answer: input, contact_info: false, sources: null },
+      },
     ]);
     setInput("");
     try {
-      if (chatbot !== null) {
-        setIsCreating(true);
-        const result = await chatMutation({
-          variables: {
-            input,
-            file: chatbot.file,
-            conversationId: parseInt(currentConversationId, 10),
-            chatbotId: parseInt(chatbot.id, 10),
-          },
-        });
+      setIsCreating(true);
+      const result = await chatMutation({
+        variables: {
+          input,
+          file: chatbot.file,
+          conversationId: parseInt(currentConversationId, 10),
+          chatbotId: parseInt(chatbot.id, 10),
+        },
+      });
 
-        // Add the bot's message
+      console.log("result", result);
+      // Add the bot's message
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        { role: "bot", message: result.data.chat, fresh: true },
+      ]);
+
+      if (result.data.chat.contact_info) {
+        /*
         setMessages((prevMessages) => [
           ...prevMessages,
-          { role: "bot", message: result.data.chat, fresh: true },
+          { role: 'sales', message: 'Vinduespudsning', fresh: true },
         ]);
-        setIsCreating(false);
+        */
       }
+
+      setIsCreating(false);
     } catch (err) {
       setInput("");
-      console.error(err);
       setIsCreating(false);
     }
   };
@@ -180,7 +201,7 @@ export default function Chat({ chatbot, close }) {
 
             {messages.map((message, index) => (
               <div
-                key={message.role + message.message}
+                key={message.role + message.message.answer}
                 className="chat-message"
               >
                 <div
@@ -192,7 +213,7 @@ export default function Chat({ chatbot, close }) {
                     <div>
                       <span
                         style={{
-                          whiteSpace:'pre-line',
+                          whiteSpace: "pre-line",
                           backgroundColor:
                             message.role === "user"
                               ? chatbot.userMessageColor
@@ -205,14 +226,50 @@ export default function Chat({ chatbot, close }) {
                         {message.role === "bot" && message?.fresh ? (
                           <TypeAnimation
                             cursor={false}
-                            sequence={[message.message]}
+                            sequence={[message.message.answer]}
                             speed={80}
                           />
                         ) : (
-                          message.message
+                          message.message.answer
                         )}
                       </span>
                     </div>
+                  </div>
+                  <div className="sources-container w-full">
+                    {message.message.sources ? (
+                      <div className="flex">
+                        <div className="flex items-center">
+                          <p className="text-base text-gray-500 mr-2 dark:text-gray-400">
+                            Kilder
+                          </p>
+                        </div>
+
+                        <div className="sources-container w-full">
+                          {message.message.sources ? (
+                            <div className="flex">
+                              <div className="flex items-center">
+                                <p className="text-base text-gray-500 mr-2 dark:text-gray-400">
+                                  Kilder
+                                </p>
+                              </div>
+                              <div className="flex overflow-x-scroll">
+                                {message.message.sources.map((source) => (
+                                  <a
+                                    href={source.url}
+                                    target="_blank"
+                                    key={source.url}
+                                    rel="noopener noreferrer"
+                                    className="text-xs mr-2 text-gray-500 whitespace-nowrap rounded-md border border-grey flex p-2 dark:text-gray-400"
+                                  >
+                                    {source.title}
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
